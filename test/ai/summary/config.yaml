@@ -1,0 +1,30 @@
+#summarizer_model: "facebook/bart-large-cnn"
+#classifier_model: "facebook/bart-large-mnli"
+#sentence_transformer_model: "all-MiniLM-L6-v2"
+
+summarizer_model: "google/pegasus-xsum"
+classifier_model: "facebook/bart-large-mnli"
+sentence_transformer_model: "all-MiniLM-L6-v2"
+
+remove_tags:
+  - "script"
+  - "style"
+  - "nav"
+  - "footer"
+  - "header"
+  - "aside"
+  - "link"
+
+max_chunk_length: 1024
+summary_max_length: 150
+summary_min_length: 30
+
+default_categories:
+  - "技术"
+  - "新闻"
+  - "娱乐"
+  - "体育"
+  - "科学"
+
+default_n_clusters: 5
+debug_mode: true
