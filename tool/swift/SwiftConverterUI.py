@@ -1,11 +1,13 @@
 import sys
 import json
 import requests
+import datetime
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QTextEdit, QPushButton, QLabel,
-                             QMessageBox, QSplitter)
+                             QMessageBox, QSplitter, QLineEdit, QFileDialog)
 from PyQt6.QtCore import Qt
 import xml.dom.minidom
+import os
 
 
 class SwiftConverterUI(QMainWindow):
@@ -21,57 +23,160 @@ class SwiftConverterUI(QMainWindow):
         # 创建主widget和布局
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
-        layout = QVBoxLayout(main_widget)
+        main_layout = QVBoxLayout(main_widget)
 
-        # 创建分割器实现左右布局
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        # 创建输入输出文本区域
+        text_widget = QWidget()
+        text_layout = QHBoxLayout(text_widget)
 
-        # 左侧面板（输入）
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.addWidget(QLabel('输入报文:'))
+        # 左侧输入区域
+        input_layout = QVBoxLayout()
+        input_label = QLabel('输入SWIFT报文:')
         self.input_text = QTextEdit()
-        self.input_text.setFontFamily('Courier New')  # 使用等宽字体
-        left_layout.addWidget(self.input_text)
+        input_layout.addWidget(input_label)
+        input_layout.addWidget(self.input_text)
+        text_layout.addLayout(input_layout)
 
-        # 右侧面板（输出）
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
-        right_layout.addWidget(QLabel('转换结果:'))
+        # 右侧输出区域
+        output_layout = QVBoxLayout()
+        output_label = QLabel('转换结果:')
         self.output_text = QTextEdit()
-        self.output_text.setFontFamily('Courier New')
         self.output_text.setReadOnly(True)
-        right_layout.addWidget(self.output_text)
+        output_layout.addWidget(output_label)
+        output_layout.addWidget(self.output_text)
+        text_layout.addLayout(output_layout)
 
-        # 添加到分割器
-        splitter.addWidget(left_widget)
-        splitter.addWidget(right_widget)
-        layout.addWidget(splitter)
+        main_layout.addWidget(text_widget)
 
-        # 按钮区域
-        button_layout = QHBoxLayout()
+        # 添加按钮区域
+        button_widget = QWidget()
+        button_layout = QHBoxLayout(button_widget)
 
         # MT转MX按钮
-        self.mt_to_mx_btn = QPushButton('MT → MX')
-        self.mt_to_mx_btn.clicked.connect(lambda: self.convert('mt2mx'))
-        button_layout.addWidget(self.mt_to_mx_btn)
+        mt_to_mx_btn = QPushButton('MT → MX')
+        mt_to_mx_btn.clicked.connect(lambda: self.convert('mt2mx'))
+        button_layout.addWidget(mt_to_mx_btn)
 
         # MX转MT按钮
-        self.mx_to_mt_btn = QPushButton('MX → MT')
-        self.mx_to_mt_btn.clicked.connect(lambda: self.convert('mx2mt'))
-        button_layout.addWidget(self.mx_to_mt_btn)
+        mx_to_mt_btn = QPushButton('MX → MT')
+        mx_to_mt_btn.clicked.connect(lambda: self.convert('mx2mt'))
+        button_layout.addWidget(mx_to_mt_btn)
 
-        # 复制结果按钮
-        self.copy_btn = QPushButton('复制结果')
-        self.copy_btn.clicked.connect(self.copy_output)
-        button_layout.addWidget(self.copy_btn)
+        # 清空按钮
+        clear_btn = QPushButton('清空')
+        clear_btn.clicked.connect(self.clear_text)
+        button_layout.addWidget(clear_btn)
 
-        # 清除按钮
-        self.clear_btn = QPushButton('清除')
-        self.clear_btn.clicked.connect(self.clear_all)
-        button_layout.addWidget(self.clear_btn)
+        # 复制按钮
+        copy_btn = QPushButton('复制结果')
+        copy_btn.clicked.connect(self.copy_result)
+        button_layout.addWidget(copy_btn)
 
-        layout.addLayout(button_layout)
+        main_layout.addWidget(button_widget)
+
+        # 添加报告生成区域（使用PyQt6控件）
+        report_widget = QWidget()
+        report_layout = QVBoxLayout(report_widget)
+
+        # 文件名输入框
+        filename_layout = QHBoxLayout()
+        filename_layout.addWidget(QLabel('文件名:'))
+        self.filename_input = QLineEdit()
+        self.filename_input.setText('conversion_report.txt')
+        filename_layout.addWidget(self.filename_input)
+        report_layout.addLayout(filename_layout)
+
+        # 路径输入框和选择按钮
+        path_layout = QHBoxLayout()
+        path_layout.addWidget(QLabel('保存路径:'))
+        self.path_input = QLineEdit()
+        self.path_input.setText(os.path.expanduser('~'))
+        path_layout.addWidget(self.path_input)
+
+        choose_path_btn = QPushButton('选择...')
+        choose_path_btn.clicked.connect(self.choose_directory)
+        path_layout.addWidget(choose_path_btn)
+        report_layout.addLayout(path_layout)
+
+        # 生成报告按钮
+        generate_btn = QPushButton('生成转换报告')
+        generate_btn.clicked.connect(self.generate_report)
+        report_layout.addWidget(generate_btn)
+
+        main_layout.addWidget(report_widget)
+
+    def convert_text(self):
+        """转换SWIFT报文"""
+        input_text = self.input_text.toPlainText()
+        if not input_text:
+            QMessageBox.warning(self, '警告', '请输入需要转换的SWIFT报文')
+            return
+
+        # TODO: 这里添加实际的转换逻辑
+        converted_text = input_text  # 临时示例，实际需要替换为真实的转换逻辑
+        self.output_text.setText(converted_text)
+
+    def clear_text(self):
+        """清空输入输出文本框"""
+        self.input_text.clear()
+        self.output_text.clear()
+
+    def copy_result(self):
+        """复制转换结果到剪贴板"""
+        result = self.output_text.toPlainText()
+        if result:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(result)
+            QMessageBox.information(self, '提示', '结果已复制到剪贴板')
+        else:
+            QMessageBox.warning(self, '警告', '没有可复制的内容')
+
+    def choose_directory(self):
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "选择保存目录",
+            self.path_input.text(),
+            QFileDialog.Option.ShowDirsOnly
+        )
+        if directory:
+            self.path_input.setText(directory)
+
+    def generate_report(self):
+        try:
+            filename = self.filename_input.text()
+            path = self.path_input.text()
+
+            # 确保文件名有.txt后缀
+            if not filename.endswith('.txt'):
+                filename += '.txt'
+
+            # 完整文件路径
+            full_path = os.path.join(path, filename)
+
+            # 生成报告内容
+            report_content = f"""SWIFT报文转换报告
+生成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+{'=' * 50}
+
+原始MT报文:
+{self.input_text.toPlainText().strip()}
+
+{'=' * 50}
+
+转换后的MX报文:
+{self.output_text.toPlainText().strip()}
+
+{'=' * 50}
+"""
+
+            # 写入文件
+            with open(full_path, 'w', encoding='utf-8') as f:
+                f.write(report_content)
+
+            QMessageBox.information(self, "成功", f"报告已生成：\n{full_path}")
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"生成报告时发生错误：\n{str(e)}")
 
     def format_xml(self, xml_string):
         """格式化XML字符串，减少不必要的空行"""
