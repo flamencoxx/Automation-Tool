@@ -4,9 +4,9 @@ import json
 import requests
 import datetime
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                            QHBoxLayout, QTextEdit, QPushButton, QLabel,
-                            QMessageBox, QSplitter, QLineEdit, QFileDialog,
-                            QTextBrowser)  # 添加 QTextBrowser
+                             QHBoxLayout, QTextEdit, QPushButton, QLabel,
+                             QMessageBox, QSplitter, QLineEdit, QFileDialog,
+                             QTextBrowser, QListWidgetItem, QListWidget)  # 添加 QTextBrowser
 from PyQt6.QtCore import Qt, QDateTime
 import xml.dom.minidom
 import os
@@ -116,15 +116,32 @@ class SwiftConverterUI(QMainWindow):
 
         # 历史记录文本区域
         # 改为：
-        self.history_text = QTextBrowser()
-        self.history_text.setOpenExternalLinks(False)  # 禁止打开外部链接
-        self.history_text.setReadOnly(True)
-        self.history_text.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextBrowserInteraction
-        )
-        self.history_text.anchorClicked.connect(self.on_history_click)
-        self.history_text.setOpenLinks(False)
-        history_layout.addWidget(self.history_text)
+        self.history_list = QListWidget()
+        self.history_list.setStyleSheet("""
+            QListWidget {
+                background-color: #2b2b2b;
+                border: none;
+                outline: none;
+            }
+            QListWidget::item {
+                background-color: #3c3f41;
+                border: 1px solid #2b2b2b;
+                border-radius: 4px;
+                color: #bbbbbb;
+                padding: 8px 12px;
+                margin: 4px 8px;
+            }
+            QListWidget::item:hover {
+                background-color: #4c5052;
+                border: 1px solid #5c6366;
+            }
+            QListWidget::item:selected {
+                background-color: #4b6eaf;
+                border: 1px solid #5c84cc;
+            }
+        """)
+        self.history_list.itemClicked.connect(self.on_history_item_clicked)
+        history_layout.addWidget(self.history_list)
 
         # 分页控制区域
         pagination_widget = QWidget()
@@ -191,6 +208,16 @@ class SwiftConverterUI(QMainWindow):
 
         main_layout.addWidget(report_widget)
 
+    def on_history_item_clicked(self, item):
+        """处理历史记录项点击事件"""
+        record = item.data(Qt.ItemDataRole.UserRole)
+        if record:
+            # 显示历史记录的详细信息
+            self.input_text.setText(record.input_msg)
+            self.output_text.setText(record.output_msg)
+            self.error_text.clear()
+            for info in record.process_info:
+                self.error_text.append(info)
     def convert_text(self):
         """转换SWIFT报文"""
         input_text = self.input_text.toPlainText()
@@ -516,33 +543,23 @@ class SwiftConverterUI(QMainWindow):
 
     def update_history_display(self):
         """更新历史记录显示"""
+        # 替换原来的 history_text 为新的 history_list
+        self.history_list.clear()
+
         if not self.conversion_history:
-            self.history_text.clear()
             self.page_info_label.setText('第 1 页 / 共 0 页')
             return
 
         start_idx = (self.current_page - 1) * self.RECORDS_PER_PAGE
         end_idx = start_idx + self.RECORDS_PER_PAGE
-
-        self.history_text.clear()
         current_records = self.conversion_history[start_idx:end_idx]
 
-        for i, record in enumerate(current_records):
-            actual_idx = start_idx + i
-            # 修改样式：使用灰色背景、圆角边框、去掉下划线的样式
-            entry = (f'<div style="margin: 5px 0;">'
-                     f'<a href="{actual_idx}" style="'
-                     f'text-decoration: none;'  # 移除下划线
-                     f'display: block;'  # 块级显示
-                     f'padding: 8px 12px;'  # 内边距
-                     f'background-color: #f0f0f0;'  # 浅灰色背景
-                     f'border-radius: 4px;'  # 圆角边框
-                     f'color: #333;'  # 深灰色文字
-                     f'hover: background-color: #e0e0e0;'  # 悬停效果
-                     f'">'
-                     f'[{record.timestamp.toString("yyyy-MM-dd hh:mm:ss")}] '
-                     f'{record.conv_type}</a></div>')
-            self.history_text.append(entry)
+        for record in current_records:
+            item = QListWidgetItem(
+                f'[{record.timestamp.toString("yyyy-MM-dd hh:mm:ss")}] {record.conv_type}'
+            )
+            item.setData(Qt.ItemDataRole.UserRole, record) # 存储完整记录数据
+            self.history_list.addItem(item)
 
         # 更新分页信息
         self.total_pages = max(1, (len(self.conversion_history) + self.RECORDS_PER_PAGE - 1) // self.RECORDS_PER_PAGE)
@@ -635,24 +652,6 @@ class SwiftConverterUI(QMainWindow):
 
         except Exception as e:
             print(f"加载历史记录失败: {str(e)}")
-
-    def on_history_click(self, url):
-        """处理历史记录点击事件"""
-        try:
-            # 从URL中获取索引
-            index = int(url.toString())
-            if 0 <= index < len(self.conversion_history):
-                record = self.conversion_history[index]
-
-                # 显示历史记录的详细信息
-                self.input_text.setText(record.input_msg)
-                self.output_text.setText(record.output_msg)
-                self.error_text.clear()
-                for info in record.process_info:
-                    self.error_text.append(info)
-
-        except (ValueError, IndexError) as e:
-            print(f"处理历史记录点击事件时出错: {str(e)}")
 
 
 
