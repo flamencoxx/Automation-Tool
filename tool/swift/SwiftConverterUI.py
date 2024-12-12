@@ -59,10 +59,21 @@ class SwiftConverterUI(QMainWindow):
         # 创建左侧文本区域
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
+
+        # 原始报文输入区域
         input_label = QLabel('输入SWIFT报文:')
         self.input_text = QTextEdit()
         left_layout.addWidget(input_label)
         left_layout.addWidget(self.input_text)
+
+        # 添加 Additional Data 输入区域
+        additional_label = QLabel('Additional Data (可选):')
+        self.additional_data_input = QTextEdit()
+        self.additional_data_input.setMaximumHeight(100)  # 限制高度
+        self.additional_data_input.setPlaceholderText("在此输入额外参数...")
+        left_layout.addWidget(additional_label)
+        left_layout.addWidget(self.additional_data_input)
+
         central_layout.addWidget(left_widget)
 
         # 创建中间文本区域
@@ -241,6 +252,11 @@ class SwiftConverterUI(QMainWindow):
     def convert(self, conv_type):
         """执行转换操作"""
         input_text = self.input_text.toPlainText().strip()
+        additional_data = self.additional_data_input.toPlainText().strip()
+        if additional_data:
+            additional_data_formatted = '{' + additional_data + '}'
+        else:
+            additional_data_formatted = None
         if not input_text:
             QMessageBox.warning(self, '警告', '请输入需要转换的报文')
             return
@@ -249,7 +265,7 @@ class SwiftConverterUI(QMainWindow):
         self.error_text.clear()
         self.output_text.clear()
 
-        # 添加处理信息列表
+        # 用于生成报告的完整信息
         self.process_info = []
         self.conversion_type = 'MT → MX' if conv_type == 'mt2mx' else 'MX → MT'
 
@@ -260,24 +276,19 @@ class SwiftConverterUI(QMainWindow):
             # 构建请求体
             request_body = {
                 'originalMsg': input_text,
-                'additionalData': '{}'
+                'additionalData': additional_data_formatted
             }
 
-            # 记录开始转换并显示在处理信息区域
+            # 界面只显示简洁信息
             start_msg = f"开始{self.conversion_type}转换..."
-            self.process_info.append(start_msg)
             self.error_text.append(start_msg)
 
-            # 记录请求信息
+            # 报告保存详细信息
+            self.process_info.append(start_msg)
             self.process_info.append("\n=== 请求信息 ===")
-            self.error_text.append("=== 请求信息 ===")
             self.process_info.append(f"URL: {url}")
-            self.error_text.append(f"URL: {url}")
             self.process_info.append("Request Body:")
-            self.error_text.append("Request Body:")
-            formatted_request = json.dumps(request_body, indent=2, ensure_ascii=False)
-            self.process_info.append(formatted_request)
-            self.error_text.append(formatted_request)
+            self.process_info.append(json.dumps(request_body, indent=2, ensure_ascii=False))
 
             # 发送请求
             response = requests.post(
@@ -289,26 +300,27 @@ class SwiftConverterUI(QMainWindow):
             response.raise_for_status()
             result = response.json()
 
-            # 记录响应信息
+            # 保存响应信息到报告
             self.process_info.append("\n=== 响应信息 ===")
-            self.error_text.append("=== 响应信息 ===")
-            formatted_response = json.dumps(result, indent=2, ensure_ascii=False)
-            self.process_info.append(formatted_response)
-            self.error_text.append(formatted_response)
+            self.process_info.append(json.dumps(result, indent=2, ensure_ascii=False))
 
             # MT → MX 转换处理
             if conv_type == 'mt2mx':
                 if result['status'] == 'Success':
                     converted_msg = result['data']['convertedMsg']
-                    # 处理转换问题（如果有）
+                    # 提取报文类型
+                    msg_type = self.extract_message_info().get('msg_type', '')
+                    self.error_text.append(f"转换类型: {msg_type if msg_type else 'Unknown'}")
+
+                    # 处理转换问题
                     if result['data']['conversionIssues']:
-                        issues = result['data']['conversionIssues']
-                        issue_msg = "\n=== 转换问题 ==="
-                        self.process_info.append(issue_msg)
+                        issue_msg = "\n转换问题:"
                         self.error_text.append(issue_msg)
-                        for issue in issues:
-                            self.process_info.append(str(issue))
-                            self.error_text.append(str(issue))
+                        self.process_info.append(issue_msg)
+                        for issue in result['data']['conversionIssues']:
+                            issue_str = f"- {str(issue)}"
+                            self.error_text.append(issue_str)
+                            self.process_info.append(issue_str)
                 else:
                     raise Exception('转换失败：状态不是Success')
 
@@ -316,17 +328,15 @@ class SwiftConverterUI(QMainWindow):
             else:
                 converted_msg = result['translatedMTMessage']
                 # 检查转换结果
-                if result['translationResult'] in ['TROK', 'TRAK']:  # TRAK表示有警告但仍然转换成功
+                if result['translationResult'] in ['TROK', 'TRAK']:
                     if result['errors']:
-                        error_msg = "\n=== 转换问题 ==="
-                        self.process_info.append(error_msg)
+                        error_msg = "\n转换问题:"
                         self.error_text.append(error_msg)
+                        self.process_info.append(error_msg)
                         for error in result['errors']:
                             error_detail = f"- {error.get('message', '未知错误')}"
-                            if error.get('path'):
-                                error_detail += f" (位置: {error['path']})"
-                            self.process_info.append(error_detail)
                             self.error_text.append(error_detail)
+                            self.process_info.append(error_detail)
                 else:
                     raise Exception('转换失败：translationResult 既不是 TROK 也不是 TRAK')
 
@@ -335,9 +345,9 @@ class SwiftConverterUI(QMainWindow):
                                 if conv_type == 'mt2mx'
                                 else self.format_mt(converted_msg))
 
-            complete_msg = "\n=== 转换完成 ==="
-            self.process_info.append(complete_msg)
+            complete_msg = "\n转换完成"
             self.error_text.append(complete_msg)
+            self.process_info.append(complete_msg)
             self.output_text.setText(formatted_output)
 
             # 添加到历史记录
@@ -347,8 +357,8 @@ class SwiftConverterUI(QMainWindow):
 
         except Exception as e:
             error_msg = f'转换失败: {str(e)}'
-            self.process_info.append(error_msg)
             self.error_text.append(error_msg)
+            self.process_info.append(error_msg)
             QMessageBox.critical(self, '错误', error_msg)
 
     def copy_output(self):
