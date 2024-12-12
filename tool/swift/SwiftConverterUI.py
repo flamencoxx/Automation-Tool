@@ -1,3 +1,4 @@
+import re
 import sys
 import json
 import requests
@@ -5,7 +6,7 @@ import datetime
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QTextEdit, QPushButton, QLabel,
                              QMessageBox, QSplitter, QLineEdit, QFileDialog)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QDateTime
 import xml.dom.minidom
 import os
 
@@ -25,30 +26,7 @@ class SwiftConverterUI(QMainWindow):
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
 
-        # 创建输入输出文本区域
-        text_widget = QWidget()
-        text_layout = QHBoxLayout(text_widget)
-
-        # 左侧输入区域
-        input_layout = QVBoxLayout()
-        input_label = QLabel('输入SWIFT报文:')
-        self.input_text = QTextEdit()
-        input_layout.addWidget(input_label)
-        input_layout.addWidget(self.input_text)
-        text_layout.addLayout(input_layout)
-
-        # 右侧输出区域
-        output_layout = QVBoxLayout()
-        output_label = QLabel('转换结果:')
-        self.output_text = QTextEdit()
-        self.output_text.setReadOnly(True)
-        output_layout.addWidget(output_label)
-        output_layout.addWidget(self.output_text)
-        text_layout.addLayout(output_layout)
-
-        main_layout.addWidget(text_widget)
-
-        # 添加按钮区域
+        # 创建按钮区域
         button_widget = QWidget()
         button_layout = QHBoxLayout(button_widget)
 
@@ -74,7 +52,59 @@ class SwiftConverterUI(QMainWindow):
 
         main_layout.addWidget(button_widget)
 
-        # 添加报告生成区域（使用PyQt6控件）
+        # 创建中央区域的水平布局
+        central_widget = QWidget()
+        central_layout = QHBoxLayout(central_widget)
+
+        # 创建左侧文本区域
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        input_label = QLabel('输入SWIFT报文:')
+        self.input_text = QTextEdit()
+        left_layout.addWidget(input_label)
+        left_layout.addWidget(self.input_text)
+        central_layout.addWidget(left_widget)
+
+        # 创建中间文本区域
+        middle_widget = QWidget()
+        middle_layout = QVBoxLayout(middle_widget)
+        output_label = QLabel('转换结果:')
+        self.output_text = QTextEdit()
+        self.output_text.setReadOnly(True)
+        middle_layout.addWidget(output_label)
+        middle_layout.addWidget(self.output_text)
+        central_layout.addWidget(middle_widget)
+
+        # 创建右侧区域
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_widget.setMaximumWidth(300)
+
+        # 右侧上方（处理信息区域）
+        error_label = QLabel('处理信息:')
+        self.error_text = QTextEdit()
+        self.error_text.setReadOnly(True)
+        self.error_text.setMaximumHeight(200)
+        right_layout.addWidget(error_label)
+        right_layout.addWidget(self.error_text)
+
+        # 右侧下方（历史记录区域）
+        history_label = QLabel('历史记录:')
+        self.history_text = QTextEdit()
+        self.history_text.setReadOnly(True)
+        right_layout.addWidget(history_label)
+        right_layout.addWidget(self.history_text)
+
+        central_layout.addWidget(right_widget)
+
+        # 设置比例
+        central_layout.setStretch(0, 2)  # 左侧占2
+        central_layout.setStretch(1, 2)  # 中间占2
+        central_layout.setStretch(2, 1)  # 右侧占1
+
+        main_layout.addWidget(central_widget)
+
+        # 添加报告生成区域
         report_widget = QWidget()
         report_layout = QVBoxLayout(report_widget)
 
@@ -84,6 +114,12 @@ class SwiftConverterUI(QMainWindow):
         self.filename_input = QLineEdit()
         self.filename_input.setText('conversion_report.txt')
         filename_layout.addWidget(self.filename_input)
+
+        # 添加生成文件名按钮
+        self.generate_filename_btn = QPushButton("生成文件名")
+        self.generate_filename_btn.clicked.connect(self.generate_filename)
+        filename_layout.addWidget(self.generate_filename_btn)
+
         report_layout.addLayout(filename_layout)
 
         # 路径输入框和选择按钮
@@ -146,30 +182,33 @@ class SwiftConverterUI(QMainWindow):
             filename = self.filename_input.text()
             path = self.path_input.text()
 
-            # 确保文件名有.txt后缀
             if not filename.endswith('.txt'):
                 filename += '.txt'
 
-            # 完整文件路径
             full_path = os.path.join(path, filename)
 
-            # 生成报告内容
+            # 更新报告内容格式
             report_content = f"""SWIFT报文转换报告
-生成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-{'=' * 50}
+    转换类型: {getattr(self, 'conversion_type', 'Unknown')}
+    生成时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+    {'=' * 50}
 
-原始MT报文:
-{self.input_text.toPlainText().strip()}
+    原始报文:
+    {self.input_text.toPlainText().strip()}
 
-{'=' * 50}
+    {'=' * 50}
 
-转换后的MX报文:
-{self.output_text.toPlainText().strip()}
+    处理信息:
+    {chr(10).join(getattr(self, 'process_info', ['无处理信息']))}
 
-{'=' * 50}
-"""
+    {'=' * 50}
 
-            # 写入文件
+    转换结果:
+    {self.output_text.toPlainText().strip()}
+
+    {'=' * 50}
+    """
+
             with open(full_path, 'w', encoding='utf-8') as f:
                 f.write(report_content)
 
@@ -206,56 +245,111 @@ class SwiftConverterUI(QMainWindow):
             QMessageBox.warning(self, '警告', '请输入需要转换的报文')
             return
 
+        # 清空处理信息和输出
+        self.error_text.clear()
+        self.output_text.clear()
+
+        # 添加处理信息列表
+        self.process_info = []
+        self.conversion_type = 'MT → MX' if conv_type == 'mt2mx' else 'MX → MT'
+
         try:
-            # 确定API端点
             endpoint = 'convertMtToMx' if conv_type == 'mt2mx' else 'convertMxMessageToMtMessage'
             url = f'http://localhost:8080/mcg/{endpoint}'
+
+            # 构建请求体
+            request_body = {
+                'originalMsg': input_text,
+                'additionalData': '{}'
+            }
+
+            # 记录开始转换并显示在处理信息区域
+            start_msg = f"开始{self.conversion_type}转换..."
+            self.process_info.append(start_msg)
+            self.error_text.append(start_msg)
+
+            # 记录请求信息
+            self.process_info.append("\n=== 请求信息 ===")
+            self.error_text.append("=== 请求信息 ===")
+            self.process_info.append(f"URL: {url}")
+            self.error_text.append(f"URL: {url}")
+            self.process_info.append("Request Body:")
+            self.error_text.append("Request Body:")
+            formatted_request = json.dumps(request_body, indent=2, ensure_ascii=False)
+            self.process_info.append(formatted_request)
+            self.error_text.append(formatted_request)
 
             # 发送请求
             response = requests.post(
                 url,
                 headers={'Content-Type': 'application/json'},
-                json={
-                    'originalMsg': input_text,
-                    'additionalData': '{}'
-                }
+                json=request_body
             )
 
             response.raise_for_status()
             result = response.json()
 
-            # 根据不同的转换类型处理返回结果
+            # 记录响应信息
+            self.process_info.append("\n=== 响应信息 ===")
+            self.error_text.append("=== 响应信息 ===")
+            formatted_response = json.dumps(result, indent=2, ensure_ascii=False)
+            self.process_info.append(formatted_response)
+            self.error_text.append(formatted_response)
+
+            # MT → MX 转换处理
             if conv_type == 'mt2mx':
-                # MT转MX的情况
                 if result['status'] == 'Success':
                     converted_msg = result['data']['convertedMsg']
-                    # 检查是否有转换问题
+                    # 处理转换问题（如果有）
                     if result['data']['conversionIssues']:
-                        QMessageBox.warning(self, '警告',
-                                            '转换完成，但存在以下问题：\n' +
-                                            '\n'.join(str(issue) for issue in result['data']['conversionIssues']))
+                        issues = result['data']['conversionIssues']
+                        issue_msg = "\n=== 转换问题 ==="
+                        self.process_info.append(issue_msg)
+                        self.error_text.append(issue_msg)
+                        for issue in issues:
+                            self.process_info.append(str(issue))
+                            self.error_text.append(str(issue))
                 else:
-                    raise Exception('转换失败')
-            else:
-                # MX转MT的情况
-                if result['translationResult'] == 'TROK':
-                    converted_msg = result['translatedMTMessage']
-                    if result['errors']:
-                        QMessageBox.warning(self, '警告',
-                                            '转换完成，但存在错误：\n' + str(result['errors']))
-                else:
-                    raise Exception('转换失败')
+                    raise Exception('转换失败：状态不是Success')
 
-            # 格式化输出
+            # MX → MT 转换处理
+            else:
+                converted_msg = result['translatedMTMessage']
+                # 检查转换结果
+                if result['translationResult'] in ['TROK', 'TRAK']:  # TRAK表示有警告但仍然转换成功
+                    if result['errors']:
+                        error_msg = "\n=== 转换问题 ==="
+                        self.process_info.append(error_msg)
+                        self.error_text.append(error_msg)
+                        for error in result['errors']:
+                            error_detail = f"- {error.get('message', '未知错误')}"
+                            if error.get('path'):
+                                error_detail += f" (位置: {error['path']})"
+                            self.process_info.append(error_detail)
+                            self.error_text.append(error_detail)
+                else:
+                    raise Exception('转换失败：translationResult 既不是 TROK 也不是 TRAK')
+
+            # 格式化输出并显示
             formatted_output = (self.format_xml(converted_msg)
                                 if conv_type == 'mt2mx'
                                 else self.format_mt(converted_msg))
 
-            # 显示结果
+            complete_msg = "\n=== 转换完成 ==="
+            self.process_info.append(complete_msg)
+            self.error_text.append(complete_msg)
             self.output_text.setText(formatted_output)
 
+            # 添加到历史记录
+            current_time = QDateTime.currentDateTime().toString('yyyy-MM-dd hh:mm:ss')
+            history_entry = f"[{current_time}] {self.conversion_type}\n"
+            self.history_text.append(history_entry)
+
         except Exception as e:
-            QMessageBox.critical(self, '错误', f'转换失败: {str(e)}')
+            error_msg = f'转换失败: {str(e)}'
+            self.process_info.append(error_msg)
+            self.error_text.append(error_msg)
+            QMessageBox.critical(self, '错误', error_msg)
 
     def copy_output(self):
         """复制输出结果到剪贴板"""
@@ -271,6 +365,79 @@ class SwiftConverterUI(QMainWindow):
         """清除所有内容"""
         self.input_text.clear()
         self.output_text.clear()
+
+    def extract_message_info(self):
+        """从报文中提取信息"""
+        info = {}
+        input_text = self.input_text.toPlainText()
+
+        try:
+            if '{1:F01' in input_text:  # MT报文
+                # 提取MT报文类型 - 考虑输入和输出报文格式
+                mt_type_match = re.search(r'{2:[IO](\d{3})', input_text)
+                if mt_type_match:
+                    info['msg_type'] = f'MT{mt_type_match.group(1)}'
+
+                # 可选：尝试提取金额信息（考虑多种可能的字段）
+                amount_match = None
+                for field in [':32A:', ':32B:', ':33B:', ':19A:']:
+                    amount_match = re.search(f'{field}([A-Z]{{3}})(\d+)', input_text)
+                    if amount_match:
+                        info['amount_ccy'] = f"{amount_match.group(1)}{amount_match.group(2)}"
+                        break
+
+            else:  # MX报文
+                # 优先使用 MsgDefIdr 提取报文类型（保留完整版本信息）
+                msg_def_match = re.search(r'<MsgDefIdr>([^<]+)</MsgDefIdr>', input_text)
+                if msg_def_match:
+                    # 保留完整的报文类型，例如 camt.057.001.06
+                    info['msg_type'] = msg_def_match.group(1)
+
+                # 备选方案1：从 Document 标签提取
+                elif '<Document' in input_text:
+                    doc_match = re.search(r'<Document xmlns="[^"]*?:(\w+\.\d{3}\.\d{3}\.\d{2})', input_text)
+                    if doc_match:
+                        info['msg_type'] = doc_match.group(1)
+
+                # 备选方案2：从 xmlns URI 提取
+                else:
+                    xmlns_match = re.search(r'xmlns="urn:iso:std:iso:20022:tech:xsd:(\w+\.\d{3}\.\d{3}\.\d{2})',
+                                            input_text)
+                    if xmlns_match:
+                        info['msg_type'] = xmlns_match.group(1)
+
+        except Exception as e:
+            print(f"提取报文信息时发生错误: {str(e)}")
+
+        return info
+
+    def generate_filename(self):
+        """生成文件名"""
+        current_time = QDateTime.currentDateTime()
+        timestamp = current_time.toString('yyyyMMdd_HHmmss')
+
+        # 获取转换类型
+        conv_type = 'MT2MX' if self.conversion_type == 'MT → MX' else 'MX2MT'
+
+        # 提取报文信息
+        msg_info = self.extract_message_info()
+
+        # 构建文件名基础部分（必需信息）
+        filename_parts = [
+            conv_type,  # 转换类型
+            msg_info.get('msg_type', ''),  # 报文类型
+            timestamp,  # 时间戳
+        ]
+
+        # 添加可选信息（如果存在）
+        if 'amount_ccy' in msg_info:
+            filename_parts.append(msg_info['amount_ccy'])
+
+        # 过滤掉空字符串，并用下划线连接
+        filename = '_'.join(filter(None, filename_parts)) + '.txt'
+
+        # 更新文件名输入框
+        self.filename_input.setText(filename)
 
 
 def main():
