@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QTextEdit, QPushButton, QLabel,
                              QMessageBox, QSplitter, QLineEdit, QFileDialog,
                              QTextBrowser, QListWidgetItem, QListWidget)  # 添加 QTextBrowser
-from PyQt6.QtCore import Qt, QDateTime
+from PyQt6.QtCore import Qt, QDateTime, QSize
 import xml.dom.minidom
 import os
 
@@ -543,8 +543,33 @@ class SwiftConverterUI(QMainWindow):
 
     def update_history_display(self):
         """更新历史记录显示"""
-        # 替换原来的 history_text 为新的 history_list
         self.history_list.clear()
+
+        # 设置列表样式
+        self.history_list.setStyleSheet("""
+            QListWidget {
+                background-color: #2b2b2b;
+                border: none;
+                outline: none;
+            }
+            QListWidget::item {
+                background-color: #3c3f41;
+                border: 1px solid #2b2b2b;
+                border-radius: 4px;
+                color: #bbbbbb;
+                padding: 4px 12px;
+                margin: 4px 8px;
+                min-height: 36px;
+            }
+            QListWidget::item:hover {
+                background-color: #4c5052;
+                border: 1px solid #5c6366;
+            }
+            QListWidget::item:selected {
+                background-color: #4b6eaf;
+                border: 1px solid #5c84cc;
+            }
+        """)
 
         if not self.conversion_history:
             self.page_info_label.setText('第 1 页 / 共 0 页')
@@ -555,10 +580,37 @@ class SwiftConverterUI(QMainWindow):
         current_records = self.conversion_history[start_idx:end_idx]
 
         for record in current_records:
-            item = QListWidgetItem(
-                f'[{record.timestamp.toString("yyyy-MM-dd hh:mm:ss")}] {record.conv_type}'
-            )
-            item.setData(Qt.ItemDataRole.UserRole, record) # 存储完整记录数据
+            # 从输入报文中提取消息类型
+            msg_info = {}
+            try:
+                input_msg = record.input_msg
+                if '{1:F01' in input_msg:  # MT报文
+                    mt_type_match = re.search(r'{2:[IO](\d{3})', input_msg)
+                    if mt_type_match:
+                        msg_info['msg_type'] = f'MT{mt_type_match.group(1)}'
+                else:  # MX报文
+                    msg_def_match = re.search(r'<MsgDefIdr>([^<]+)</MsgDefIdr>', input_msg)
+                    if msg_def_match:
+                        msg_info['msg_type'] = msg_def_match.group(1)
+                    else:
+                        doc_match = re.search(r'<Document xmlns="[^"]*?:(\w+\.\d{3}\.\d{3}\.\d{2})', input_msg)
+                        if doc_match:
+                            msg_info['msg_type'] = doc_match.group(1)
+            except Exception:
+                msg_info['msg_type'] = '未知类型'
+
+            # 创建列表项
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, record)
+
+            # 设置两行显示格式
+            display_text = (f'{record.timestamp.toString("yy-MM-dd HH:mm:ss")} {record.conv_type}\n'
+                            f'    {msg_info.get("msg_type", "未知类型")}')
+            item.setText(display_text)
+
+            # 设置项目高度
+            item.setSizeHint(QSize(item.sizeHint().width(), 44))
+
             self.history_list.addItem(item)
 
         # 更新分页信息
