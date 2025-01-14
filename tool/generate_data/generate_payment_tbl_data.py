@@ -75,6 +75,8 @@ def main():
                         help='Total number of records to generate (default: 700000)')
     parser.add_argument('--batch-size', type=int, default=1000,
                         help='Number of records per INSERT statement (default: 1000)')
+    parser.add_argument('--block-size', type=int, default=10000,
+                        help='Number of records per execution block (default: 10000)')
     parser.add_argument('--start-date', type=parse_datetime,
                         default=datetime(2023, 1, 1),
                         help='Start datetime for CREATION_DT (format: YYYY-MM-DD HH:MM:SS)')
@@ -86,7 +88,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Column names for the INSERT statement
     columns = """
         TRANSACTION_ID, FPS_REF_NO, CATEGORY_PURPOSE, IS_CREDIT, 
         SETTLEMENT_AMT, SETTLEMENT_CCY, SETTLEMENT_DATE,
@@ -98,24 +99,39 @@ def main():
     """
 
     with open(args.output, 'w', encoding='utf-8') as f:
-        f.write('SET NOCOUNT ON;\nBEGIN TRANSACTION;\n\n')
+        f.write('SET NOCOUNT ON;\n\n')
+
+        # 添加GO语句的计数器
+        block_count = 0
 
         # Generate data in batches
         batch_values = []
         for i in range(args.total):
             batch_values.append(generate_value_string(i, args.start_date, args.end_date))
 
-            # When batch is full or this is the last record, write to file
+            # 当批次满了或是最后一条记录时写入文件
             if len(batch_values) == args.batch_size or i == args.total - 1:
+                # 如果是新块的开始，添加注释
+                if i % args.block_size == 0:
+                    block_count += 1
+                    f.write(
+                        f'\n-- Block {block_count}: Records {i + 1 - len(batch_values)} to {min(i + args.block_size, args.total)}\n')
+
+                f.write('BEGIN TRANSACTION;\n')
                 f.write(f'INSERT INTO ECFPS_PAYMENT_TBL (\n{columns}\n) VALUES\n')
                 f.write(',\n'.join(batch_values))
-                f.write(';\n\n')
+                f.write(';\n')
+                f.write('COMMIT;\n')
                 batch_values = []
 
-                # Print progress
+                # 每个块结束时添加GO
+                if (i + 1) % args.block_size == 0 or i == args.total - 1:
+                    f.write('\nGO\n\n')
+
+                # 打印进度
                 print(f'Generated {i + 1} of {args.total} records')
 
-        f.write('COMMIT;\nSET NOCOUNT OFF;\n')
+        f.write('SET NOCOUNT OFF;\n')
 
 
 if __name__ == '__main__':
