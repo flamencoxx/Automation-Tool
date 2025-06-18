@@ -56,6 +56,7 @@ class DTOGenerator:
             "mandatory": self._mandatory_mark,
             "formatter": self._formatter_anno
         }
+
         # 默认formatter映射
         if self.field_config.formatter_mapping is None:
             self.field_config.formatter_mapping = {
@@ -257,10 +258,10 @@ class DTOGenerator:
 if __name__ == "__main__":
     # 配置Excel读取规则
     excel_config = ExcelConfig(
-        file_path="C:\\Users\\admin\\OneDrive\\WORK\\ecfps_doc\\mainland-crossboard\\SCB\\ISSUE-5\\FPDWPPD_v2.40_20241028.xlsx",
+        file_path="C:\\Users\\admin\\OneDrive\\WORK\\ecfps_doc\\mainland-crossboard\\SCB\\ISSUE-5\\FPDWPPC1_v2.40_20241028.xlsx",
         header_row=25,
         data_start_row=26,
-        data_end_row=1489,
+        data_end_row=1413,
         column_map={
             "name": 0,  # A列: Field Name
             "desc": 1,  # B列: Description
@@ -308,12 +309,12 @@ if __name__ == "__main__":
  * 字段统计: 共 {stats['total']} 个字段 (必填: {stats['mandatory']})
  * 类型分布: {', '.join(f'{k}:{v}' for k, v in stats['types'].items())}
  */
-public class RemittanceDTO {{
+public class RemittanceDTO2 {{
 
 """
 
     # 输出结果
-    with open("RemittanceDTO.java", "w", encoding="utf-8") as f:
+    with open("RemittanceDTO2.java", "w", encoding="utf-8") as f:
         f.write(file_header)
         f.write("\n".join(fields))
         f.write("\n")
@@ -321,4 +322,4 @@ public class RemittanceDTO {{
         f.write("\n}")
 
     print(f"\n生成完成，共处理 {stats['total']} 个字段")
-    print(f"输出文件: RemittanceDTO.java")
+    print(f"输出文件: RemittanceDTO2.java")
